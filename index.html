@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Motion Statistics Explorer</title>
+<style>
+:root{
+  --bg:#ffffff;--card:#eef4f8;--ink:#0b2a42;--muted:#5b6b78;--grid:#d5e0e8;
+  --c1:#0a5c86;--c2:#1c7293;--c3:#d98e04;--ok:#1f7a4d;--warn:#b3541e;--btn:#0a5c86;--btnink:#ffffff;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1b26;--card:#17283a;--ink:#e6eef4;--muted:#9fb3c2;--grid:#2a3d4f;
+  --c1:#6bb6dd;--c2:#7fd0e0;--c3:#f0b24a;--ok:#5fcf97;--warn:#f08a5a;--btn:#6bb6dd;--btnink:#0b2a42;}}
+:root[data-theme="dark"]{
+  --bg:#0f1b26;--card:#17283a;--ink:#e6eef4;--muted:#9fb3c2;--grid:#2a3d4f;
+  --c1:#6bb6dd;--c2:#7fd0e0;--c3:#f0b24a;--ok:#5fcf97;--warn:#f08a5a;--btn:#6bb6dd;--btnink:#0b2a42;}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Calibri,"Segoe UI",system-ui,sans-serif;line-height:1.4}
+.wrap{max-width:980px;margin:0 auto;padding:20px 16px 32px}
+h1{font-family:Cambria,Georgia,serif;font-size:26px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:12px}
+.card{background:var(--card);border-radius:8px;padding:12px 14px}
+label{display:flex;justify-content:space-between;font-weight:600;font-size:14px}
+label span{color:var(--c1)}
+input[type=range]{width:100%;accent-color:var(--c1)}
+.hint{font-size:12px;color:var(--muted);margin-top:2px}
+.presets{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.presets b{font-size:14px}
+button{background:var(--btn);color:var(--btnink);border:0;border-radius:6px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer}
+button.alt{background:var(--card);color:var(--ink);border:1px solid var(--grid)}
+canvas{width:100%;height:auto;display:block;background:var(--card);border-radius:8px;margin-bottom:12px}
+.res{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.res .card{text-align:left}
+.res .k{font-size:12px;color:var(--muted)}
+.res .v{font-size:22px;font-weight:700;font-family:Cambria,Georgia,serif}
+#msg{padding:12px 14px;border-radius:8px;border-left:6px solid var(--c1);background:var(--card);font-size:15px}
+#msg.warn{border-left-color:var(--warn)}#msg.ok{border-left-color:var(--ok)}
+.note{font-size:12px;color:var(--muted);margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Motion Statistics Explorer</h1>
+  <p class="sub">Drag the sliders and watch how waves turn into vessel motion. Heave response of an illustrative barge.</p>
+
+  <div class="presets"><b>Try a sea state:</b>
+    <button data-p="1,6">C1: Hs 1.0 m, Tp 6 s</button>
+    <button data-p="2,8">C2: Hs 2.0 m, Tp 8 s</button>
+    <button data-p="3,10">C3: Hs 3.0 m, Tp 10 s</button>
+    <button class="alt" id="reset">Reset</button>
+  </div>
+
+  <div class="grid">
+    <div class="card"><label>Significant wave height Hs <span id="vHs"></span></label><input id="Hs" type="range" min="0.5" max="4" step="0.1" value="2"><div class="hint">Bigger waves, bigger motions.</div></div>
+    <div class="card"><label>Peak wave period Tp <span id="vTp"></span></label><input id="Tp" type="range" min="5" max="14" step="0.5" value="8"><div class="hint">Where the wave energy is concentrated.</div></div>
+    <div class="card"><label>Vessel natural period Tn <span id="vTn"></span></label><input id="Tn" type="range" min="3" max="12" step="0.5" value="5"><div class="hint">Set by mass, added mass and stiffness.</div></div>
+    <div class="card"><label>Damping (% of critical) <span id="vZ"></span></label><input id="Z" type="range" min="5" max="60" step="1" value="30"><div class="hint">More damping lowers the resonance peak.</div></div>
+    <div class="card"><label>Exposure time <span id="vD"></span></label><input id="D" type="range" min="0.5" max="6" step="0.5" value="3"><div class="hint">Longer exposure, larger extreme motion.</div></div>
+  </div>
+
+  <canvas id="cv" width="900" height="620"></canvas>
+
+  <div class="res">
+    <div class="card"><div class="k">Wave: 2√m₀</div><div class="v" id="rW"></div></div>
+    <div class="card"><div class="k">Vessel heave: 2√m₀</div><div class="v" id="rV"></div></div>
+    <div class="card"><div class="k">Amplification</div><div class="v" id="rA"></div></div>
+    <div class="card"><div class="k">Mean zero-crossing period Tz</div><div class="v" id="rT"></div></div>
+    <div class="card"><div class="k">Number of cycles N</div><div class="v" id="rN"></div></div>
+    <div class="card"><div class="k">Most probable maximum</div><div class="v" id="rM"></div></div>
+  </div>
+  <div id="msg"></div>
+  <p class="note">Teaching model: JONSWAP wave spectrum (peakedness 3.3) and a single-degree-of-freedom heave RAO. Not a MOSES result. Significant = 2√m₀ and most probable maximum = √(2 m₀ ln N), both single amplitudes.</p>
+</div>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var w=[],dw=0.01;for(var x=0.3;x<=2.0001;x+=dw)w.push(x);
+var ids=["Hs","Tp","Tn","Z","D"],def={Hs:2,Tp:8,Tn:5,Z:30,D:3};
+function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function calc(){
+  var Hs=+$("Hs").value,Tp=+$("Tp").value,Tn=+$("Tn").value,z=+$("Z").value/100,D=+$("D").value;
+  var wp=2*Math.PI/Tp,wn=2*Math.PI/Tn,S=[],R2=[],SR=[],sum=0,i;
+  for(i=0;i<w.length;i++){var s=w[i]<=wp?0.07:0.09;
+    var v=Math.pow(w[i],-5)*Math.exp(-1.25*Math.pow(wp/w[i],4))*Math.pow(3.3,Math.exp(-Math.pow(w[i]-wp,2)/(2*s*s*wp*wp)));S.push(v);sum+=v*dw;}
+  var k=Hs*Hs/(16*sum),m0w=0,m0=0,m2=0;
+  for(i=0;i<w.length;i++){S[i]*=k;var r=w[i]/wn;R2.push(1/(Math.pow(1-r*r,2)+Math.pow(2*z*r,2)));SR.push(R2[i]*S[i]);
+    m0w+=S[i]*dw;m0+=SR[i]*dw;m2+=SR[i]*w[i]*w[i]*dw;}
+  var Tz=2*Math.PI*Math.sqrt(m0/m2),N=D*3600/Tz,mpm=Math.sqrt(2*m0*Math.log(N));
+  return {S:S,R2:R2,SR:SR,Hs:Hs,Tp:Tp,Tn:Tn,wp:wp,wn:wn,D:D,sw:2*Math.sqrt(m0w),sv:2*Math.sqrt(m0),Tz:Tz,N:N,mpm:mpm};
+}
+function plot(ctx,W,x0,y0,h,xs,ys,col,title,ymax,vline,vtxt,fill){
+  var pl=56,pr=16,pw=W-pl-pr,xmin=0.3,xmax=2.0,i;
+  ctx.strokeStyle=css("--grid");ctx.lineWidth=1;ctx.fillStyle=css("--muted");ctx.font="12px Calibri,sans-serif";
+  ctx.beginPath();ctx.moveTo(x0+pl,y0);ctx.lineTo(x0+pl,y0+h);ctx.lineTo(x0+pl+pw,y0+h);ctx.stroke();
+  ctx.fillStyle=css("--ink");ctx.font="bold 13px Calibri,sans-serif";ctx.fillText(title,x0+pl+4,y0+12);
+  ctx.fillStyle=css("--muted");ctx.font="11px Calibri,sans-serif";
+  [0.5,1,1.5,2].forEach(function(t){var px=x0+pl+(t-xmin)/(xmax-xmin)*pw;ctx.fillText(t,px-6,y0+h+13);});
+  ctx.fillText("0",x0+pl-12,y0+h);ctx.fillText(ymax.toFixed(1),x0+pl-30,y0+10);
+  function P(j){return [x0+pl+(xs[j]-xmin)/(xmax-xmin)*pw,y0+h-Math.min(ys[j]/ymax,1)*h];}
+  if(fill){ctx.globalAlpha=0.22;ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(x0+pl,y0+h);for(i=0;i<xs.length;i++){var p=P(i);ctx.lineTo(p[0],p[1]);}ctx.lineTo(x0+pl+pw,y0+h);ctx.closePath();ctx.fill();ctx.globalAlpha=1;}
+  ctx.strokeStyle=col;ctx.lineWidth=2.5;ctx.beginPath();for(i=0;i<xs.length;i++){var q=P(i);if(i)ctx.lineTo(q[0],q[1]);else ctx.moveTo(q[0],q[1]);}ctx.stroke();
+  if(vline){var vx=x0+pl+(vline-xmin)/(xmax-xmin)*pw;ctx.setLineDash([4,4]);ctx.strokeStyle=css("--muted");ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(vx,y0+16);ctx.lineTo(vx,y0+h);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=css("--muted");ctx.fillText(vtxt,vx+4,y0+26);}
+}
+function draw(){
+  var c=calc(),cv=$("cv"),dpr=window.devicePixelRatio||1,W=cv.clientWidth||900,H=Math.round(W*0.68);
+  cv.width=W*dpr;cv.height=H*dpr;var ctx=cv.getContext("2d");ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  var ph=(H-30)/3-22,mx=function(a){return Math.max.apply(null,a)};
+  plot(ctx,W,0,8,ph,w,c.S,css("--c1"),"1  Wave spectrum",Math.max(mx(c.S)*1.15,0.5),c.wp,"Tp "+c.Tp+" s",true);
+  plot(ctx,W,0,8+ph+30,ph,w,c.R2,css("--c2"),"2  RAO squared",Math.max(mx(c.R2)*1.1,2),c.wn,"Tn "+c.Tn+" s",false);
+  plot(ctx,W,0,8+2*(ph+30),ph,w,c.SR,css("--c3"),"3  Response = wave × RAO² (area = m₀)",Math.max(mx(c.SR)*1.15,0.5),null,"",true);
+  ctx.fillStyle=css("--muted");ctx.font="11px Calibri,sans-serif";ctx.fillText("Wave frequency (rad/s)",W/2-50,H-4);
+  $("vHs").textContent=c.Hs.toFixed(1)+" m";$("vTp").textContent=c.Tp.toFixed(1)+" s";$("vTn").textContent=c.Tn.toFixed(1)+" s";$("vZ").textContent=$("Z").value+" %";$("vD").textContent=c.D.toFixed(1)+" h";
+  $("rW").textContent=c.sw.toFixed(2)+" m";$("rV").textContent=c.sv.toFixed(2)+" m";$("rA").textContent="× "+(c.sv/c.sw).toFixed(2);
+  $("rT").textContent=c.Tz.toFixed(1)+" s";$("rN").textContent=Math.round(c.N).toLocaleString();$("rM").textContent=c.mpm.toFixed(2)+" m";
+  var close=Math.abs(c.Tp-c.Tn)/c.Tn<0.25,amp=c.sv/c.sw,m=$("msg");
+  if(close){m.className="warn";m.textContent="Tp is close to the natural period, so the vessel is near resonance. Motion is amplified ("+amp.toFixed(2)+" times the wave). Try more damping or check a different sea state.";}
+  else if(amp>1.05){m.className="warn";m.textContent="The vessel moves more than the wave ("+amp.toFixed(2)+" times). The wave energy overlaps the vessel's resonance range.";}
+  else{m.className="ok";m.textContent="The vessel follows the wave without much amplification ("+amp.toFixed(2)+" times). Try moving Tn closer to Tp to see resonance appear.";}
+}
+ids.forEach(function(i){$(i).addEventListener("input",draw);});
+Array.prototype.forEach.call(document.querySelectorAll("button[data-p]"),function(b){b.addEventListener("click",function(){var p=b.getAttribute("data-p").split(",");$("Hs").value=p[0];$("Tp").value=p[1];draw();});});
+$("reset").addEventListener("click",function(){ids.forEach(function(i){$(i).value=def[i];});draw();});
+window.addEventListener("resize",draw);
+if(window.matchMedia){var mq=window.matchMedia("(prefers-color-scheme: dark)");if(mq.addEventListener)mq.addEventListener("change",draw);}
+draw();
+})();
+</script>
+</body>
+</html>
